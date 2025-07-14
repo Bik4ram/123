@@ -1,0 +1,572 @@
+Absolutely! Here is a comprehensive, fully structured, Confluence-ready documentation for your pinmux formal verification automation flow. This document is exhaustive—starting from the basics of formal, walking through the specific automation, with every detail explained for both beginners and advanced users. You can copy and paste this directly into Confluence, including all code blocks, explanations, practical advice, and troubleshooting.
+
+
+---
+
+Pinmux Formal Verification Automation: Complete Guide
+
+
+---
+
+Table of Contents
+
+1. Introduction to Formal Verification
+
+
+2. Overview of the Pinmux Verification Flow
+
+
+3. Repository Structure & Directory Map
+
+
+4. Getting Started: Prerequisites & Setup
+
+
+5. Step-by-Step Workflow
+
+a. Parsing Specifications
+
+b. Assertion Generation
+
+c. Assertion Annotation
+
+d. TCL Script Generation
+
+e. Running Formal with JasperGold
+
+f. Analyzing Reports
+
+
+
+6. Detailed File/Script Explanations
+
+
+7. How to Add/Modify Components
+
+Adding RTL/Files
+
+Adding Assertions
+
+Modifying the TCL Flow
+
+Checking Completeness
+
+
+
+8. Outputs & Reports: How to Interpret
+
+
+9. Troubleshooting & FAQ
+
+
+10. Best Practices for Formal Verification
+
+
+11. Glossary
+
+
+12. Further Reading & Resources
+
+
+13. Contact and Support
+
+
+
+
+---
+
+1. Introduction to Formal Verification
+
+What is Formal Verification?
+
+Formal Verification (FV) is a mathematically-based methodology to prove or disprove the correctness of a hardware design with respect to a certain formal specification or set of properties. Unlike simulation-based methods, FV explores all possible scenarios in the state space, guaranteeing exhaustive coverage (within defined bounds and resources).
+
+Why Use Formal?
+
+Exhaustive Proof: Verifies every possible input and state, not just sampled scenarios.
+
+Early Bug Detection: Finds corner-case bugs before tape-out.
+
+No Testbenches Needed: Works directly on properties/assertions.
+
+Root Cause Visibility: Generates counterexamples for failing properties.
+
+
+Common Terms
+
+Assertion: A formal property written in SystemVerilog Assertion (SVA) or PSL.
+
+Coverage: Indicates what portion of design behavior is formally verified.
+
+Proven: Property is mathematically true.
+
+CEX (Counterexample): A stimulus sequence showing assertion failure.
+
+Vacuous: Assertion is “trivially” true—often indicates missing stimulus or coverage.
+
+
+
+---
+
+2. Overview of the Pinmux Verification Flow
+
+This repository automates pinmux (IO-multiplexer) formal verification by converting Excel-based signal mapping specifications into formal properties, automatically annotating and binding assertions, and running a full JasperGold verification pipeline, generating comprehensive reports.
+
+Key Goals:
+
+Automate everything: from parsing specs to generating SVAs and running formal.
+
+Ensure every pad, mux, and function is covered by robust, parameterized assertions.
+
+Minimize human error and maximize coverage and traceability.
+
+
+
+---
+
+3. Repository Structure & Directory Map
+
+pinmux/
+├── annote_def.py                # Macro annotation for SV assertions
+├── assert_gen.py                # Assertion generation from mapping CSV
+├── assume.tcl                   # (Optional) TCL for assumption setup
+├── config.json                  # All configuration for the flow
+├── gpio_mapping.xlsx            # Signal mapping/spec Excel
+├── runme.py                     # Pipeline automation script (master control)
+├── run_jg.tcl                   # Generated TCL for JasperGold
+├── spec_parse.py                # Excel parsing and CSV mapping extraction
+├── jgproject/                   # JasperGold project and logs
+│   ├── ...
+├── output/                      # Intermediate generated data
+│   ├── final_mux_output.csv
+│   ├── final_mux_output_structured_formal_assertions.sv
+│   ├── missing_signals.csv
+│   ├── signal_counts.csv
+│   └── signal_instance_counts.csv
+├── report/                      # Formal run outputs & summary
+│   ├── assertions_annoted_summary.sv
+│   ├── cex.csv
+│   ├── covered.csv
+│   ├── mux_summary_pkg_*.csv
+│   ├── proven.csv
+│   ├── report.txt
+│   ├── unreachable.csv
+│   └── vacuous.csv
+└── rtl/                         # RTL sources for formal analysis
+    ├── debounce_filter.v
+    ├── gpio.v
+    ├── gpio_regs.v
+    ├── ioss_wrapper.v
+    ├── mux_pinmux.v
+    ├── pinmux_wrapper.v
+    └── ... (other Verilog files)
+
+
+---
+
+4. Getting Started: Prerequisites & Setup
+
+Software Requirements
+
+Python 3.8+ (with pandas, numpy, openpyxl)
+
+Cadence JasperGold (for formal verification)
+
+Linux/Unix shell for scripting, or Windows WSL
+
+
+Installation (Python packages)
+
+pip install pandas numpy openpyxl
+
+Environment Variables
+
+Ensure python3 and JasperGold (jg command or script) are in your $PATH.
+
+
+Project Files
+
+All scripts, Excel files, and RTL should be in the working directory (pinmux/).
+
+
+
+---
+
+5. Step-by-Step Workflow
+
+A. Parsing Specifications
+
+1. Script: spec_parse.py
+
+
+2. Input: gpio_mapping.xlsx
+
+
+3. Output: output/final_mux_output.csv, plus various stats CSVs
+
+
+4. Function: Reads the Excel, extracts all relevant mapping and signal info, standardizes names, creates machine-readable CSV mapping all pads to muxes, functions, and types.
+
+
+
+Command:
+
+python3 spec_parse.py --input gpio_mapping.xlsx --pkgcols F G H I J --iobuf CY
+
+(Arguments may differ; see config.json for your flow.)
+
+
+---
+
+B. Assertion Generation
+
+1. Script: assert_gen.py
+
+
+2. Input: output/final_mux_output.csv
+
+
+3. Output: output/final_mux_output_structured_formal_assertions.sv
+
+
+4. Function: Reads CSV mapping, auto-generates SV parameterized assertion properties for every signal and function (push-pull, open-drain, pullup, etc).
+
+
+
+Command:
+
+python3 assert_gen.py --file output/final_mux_output.csv
+
+
+---
+
+C. Assertion Annotation
+
+1. Script: annote_def.py
+
+
+2. Input: Mapping CSV, unannotated SV assertion file, RTL wrapper name
+
+
+3. Output: report/assertions_annoted_summary.sv
+
+
+4. Function: Rewrites macro and signal references in the assertion file, resolving them to RTL wrapper-level signal names using mapping.csv and standard conventions.
+
+
+
+Command:
+
+python3 annote_def.py --csv rtl/mapping.csv --sv output/final_mux_output_structured_formal_assertions.sv --wrapper ioss_wrapper --out report/assertions_annoted_summary.sv
+
+
+---
+
+D. TCL Script Generation
+
+1. Function: Generates a complete TCL script for JasperGold to analyze, elaborate, and prove all assertions.
+
+
+2. Generated File: run_jg.tcl
+
+
+3. Details: Includes all relevant analyze, elaborate, prove, and report commands, using filelists and annotated assertion file.
+
+
+
+
+---
+
+E. Running Formal with JasperGold
+
+Command: runme.py orchestrates all previous steps and launches JasperGold (or you can run generated TCL directly).
+
+JasperGold Output: Dumps all report files to report/ directory for review.
+
+
+Example (full pipeline):
+
+python3 runme.py
+
+
+---
+
+F. Analyzing Reports
+
+Key Outputs:
+
+proven.csv: Assertions fully proven by JasperGold
+
+cex.csv: Properties with counterexamples (failures)
+
+covered.csv: Coverage of properties
+
+unreachable.csv: Properties unreachable (usually vacuous or missing connectivity)
+
+vacuous.csv: Intersection of proven and unreachable, i.e., vacuously true
+
+report.txt: Text summary for quick review
+
+
+What to Look For:
+
+All intended assertions should be in proven.csv and not in vacuous.csv.
+
+Investigate any properties in cex.csv or unreachable.csv.
+
+
+
+
+---
+
+6. Detailed File/Script Explanations
+
+A. spec_parse.py
+
+Reads multiple sheets from the Excel spec.
+
+Extracts pad names, muxes, function names, signal types.
+
+Builds a comprehensive mapping of all IO paths and configurations.
+
+Generates output CSVs for further processing:
+
+final_mux_output.csv: main mapping used by assertion generator
+
+missing_signals.csv: for completeness checking
+
+signal_counts.csv and signal_instance_counts.csv: statistics
+
+
+
+B. assert_gen.py
+
+Reads mapping CSV.
+
+Defines all assertion property templates (push-pull, open-drain, pull-up, pull-down, high-Z, input path, etc.).
+
+For each signal/pad:
+
+Instantiates appropriate assertion properties.
+
+Generates concatenation buses where required.
+
+Writes all SV assertions to a single file, parameterized for easy binding.
+
+
+
+C. annote_def.py
+
+Parses the assertion SV file for macros (\define ...`).
+
+Matches signal macros to RTL wrapper signals using mapping rules and mapping.csv.
+
+Handles both DP/MP pad macros and user-specified prefixes.
+
+Writes out the fully annotated SV assertion file ready for formal tools.
+
+
+D. runme.py
+
+Loads config from config.json.
+
+Runs all stages: parsing, assertion generation, annotation, TCL generation, and formal run.
+
+Handles path validation and error reporting.
+
+Collects all reports into report/ directory.
+
+
+E. config.json
+
+Master config file. Controls:
+
+Which scripts are run, in what order.
+
+What input/output files are used.
+
+What files are analyzed in JasperGold.
+
+How report filenames are set.
+
+(Advanced users can edit this to change flow, add new files, or customize TCL commands.)
+
+
+
+
+---
+
+7. How to Add/Modify Components
+
+A. Adding RTL Files
+
+Drop the new Verilog/SystemVerilog files into the rtl/ directory.
+
+Add their paths to the analyze_files list in config.json.
+
+
+B. Adding or Editing Assertions
+
+Edit assertion property templates or add new ones in assert_gen.py.
+
+Re-run assertion generation stage:
+
+python3 assert_gen.py --file output/final_mux_output.csv
+
+Then re-annotate and continue flow as usual.
+
+
+C. Modifying the TCL Script (for JasperGold)
+
+The TCL script is generated dynamically by runme.py.
+
+To add extra steps or analysis commands, edit the generate_tcl function in runme.py.
+
+Or, hand-edit run_jg.tcl after auto-generation if preferred.
+
+
+D. Checking Package Completeness
+
+Each run produces package-wise summary CSVs (e.g., mux_summary_pkg_F.csv) in report/.
+
+Review these to check if all pins/functions are covered for each package.
+
+
+
+---
+
+8. Outputs & Reports: How to Interpret
+
+final_mux_output.csv: Comprehensive mapping of all pads, muxes, functions (inputs to assertion generator).
+
+final_mux_output_structured_formal_assertions.sv: All generated formal assertions, parameterized and ready for binding.
+
+assertions_annoted_summary.sv: Fully annotated and mapped assertion file (what is actually used in formal).
+
+proven.csv / cex.csv / covered.csv / unreachable.csv: JasperGold standard outputs for property results.
+
+vacuous.csv: Special—vacuously true assertions (proven but unreachable).
+
+report.txt: Human-readable summary, suitable for pasting into emails/meetings.
+
+
+
+---
+
+9. Troubleshooting & FAQ
+
+Common Issues
+
+Q: ModuleNotFoundError: No module named ‘pandas’
+
+A: Run pip install pandas
+
+
+Q: FileNotFoundError for mapping or output files
+
+A: Double-check paths in config.json. All referenced files must exist in the right directories.
+
+
+Q: JasperGold cannot analyze RTL or assertion file
+
+A: Ensure all files in analyze_files are valid RTL or SV and are syntactically correct. Check for typos.
+
+
+Q: Assertions are vacuously true (vacuous.csv)
+
+A: Most likely due to:
+
+Missing stimulus or driver on input
+
+Incorrect or incomplete assertion binding
+
+Incorrect wrapper mapping—check annotation and macro mapping logic
+
+
+
+Q: JasperGold run is stuck or fails
+
+A: Check log files under jgproject/. Make sure all environment variables and required licenses are available. Validate resource allocation in bsub_cmd (if using LSF).
+
+
+Q: I want to change wrapper name or pad prefix
+
+A: Pass the correct --wrapper argument to annote_def.py and update mapping rules as required.
+
+
+
+---
+
+10. Best Practices for Formal Verification
+
+Start small: Verify simple properties before scaling up.
+
+Parameterize assertions: Use macros/properties to avoid code duplication.
+
+Check coverage: Don’t just rely on “proven”—examine unreachable and vacuous results.
+
+Automate the flow: As in this repo—manual steps are error-prone.
+
+Keep specs, mapping, and RTL synchronized: Inconsistencies are a common source of bugs.
+
+Investigate counterexamples (CEX): They are your best debugging aid.
+
+Document everything: Especially mapping rules and assertion logic.
+
+
+
+---
+
+11. Glossary
+
+Pad: Physical IO connection on the chip.
+
+Mux (Multiplexer): Logic block that selects among several input signals.
+
+Wrapper: Top-level RTL module that aggregates signals/IPs.
+
+Property: SystemVerilog or PSL assertion describing required design behavior.
+
+Vacuous: Proven “by default”—often a sign of missing connections.
+
+Annotation: Mapping generic assertions/macros to concrete RTL signals.
+
+
+
+---
+
+12. Further Reading & Resources
+
+Cadence JasperGold User Guide
+
+SystemVerilog Assertions (SVA) Cookbook (PDF)
+
+Formal Verification Best Practices (Mentor Graphics)
+
+
+
+---
+
+13. Contact and Support
+
+For technical support, troubleshooting, or flow improvements:
+
+Project Owner: [Your Name]
+
+Email: your.email@company.com
+
+Slack/Teams: #formal-verification or DM [Your Handle]
+
+Documentation updates: Please submit merge requests or suggestions via the repo.
+
+
+
+---
+
+You are now ready to run, debug, and extend the entire Pinmux Formal Verification Automation Flow!
+
+
+---
+
+If you need this broken into multiple Confluence sub-pages, or want expanded “beginner’s corner” sections on SVA/property writing, let me know!
+
